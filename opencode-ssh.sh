@@ -37,6 +37,7 @@ Options:
     -l, --local-port PORT    指定本地端口 (默认: 随机)
     -k, --api-key KEY        直接传入 OPENCODE_API_KEY
     -s, --password PASS      直接传入 OPENCODE_SERVER_PASSWORD
+    -w, --workdir DIR        远程工作目录（启动 opencode serve 前 cd 到该目录）
     -b, --browser            仅打开浏览器
     -h, --help               显示此帮助
 
@@ -55,6 +56,7 @@ REMOTE_PORT=$REMOTE_PORT
 LOCAL_PORT=""
 API_KEY=""
 SERVER_PASSWORD=""
+WORKDIR=""
 USE_BROWSER=false
 
 while [[ $# -gt 0 ]]; do
@@ -64,6 +66,7 @@ while [[ $# -gt 0 ]]; do
         -l|--local-port) LOCAL_PORT="$2"; shift 2 ;;
         -k|--api-key) API_KEY="$2"; shift 2 ;;
         -s|--password) SERVER_PASSWORD="$2"; shift 2 ;;
+        -w|--workdir) WORKDIR="$2"; shift 2 ;;
         -b|--browser) USE_BROWSER=true; shift ;;
         -*)
             if [ -z "$SSH_HOST" ]; then
@@ -229,6 +232,11 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
+# 切换到工作目录（如果指定）
+if [ -n "__WORKDIR__" ] && [ -d "__WORKDIR__" ]; then
+    cd "__WORKDIR__"
+fi
+
 # 启动 opencode serve
 export OPENCODE_API_KEY="$API_KEY"
 export OPENCODE_SERVER_PASSWORD="$PASSWORD"
@@ -265,6 +273,7 @@ REMOTE_SCRIPT=${REMOTE_SCRIPT//__AK__/$API_KEY_B64}
 REMOTE_SCRIPT=${REMOTE_SCRIPT//__PW__/$PASS_B64}
 REMOTE_SCRIPT=${REMOTE_SCRIPT//__SID__/$SESSION_ID}
 REMOTE_SCRIPT=${REMOTE_SCRIPT//__PORT__/$REMOTE_PORT}
+REMOTE_SCRIPT=${REMOTE_SCRIPT//__WORKDIR__/$WORKDIR}
 
 # base64 编码后通过 SSH 参数传递（不经过 heredoc）
 SCRIPT_B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 | tr -d '\n')
