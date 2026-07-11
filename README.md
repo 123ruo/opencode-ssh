@@ -39,6 +39,7 @@ opencode-ssh <ssh-host-alias> [options]
 | `-k, --api-key KEY`      | 直接传入 `OPENCODE_API_KEY`，设置opencode密钥        | 从环境变量读取 |
 | `-s, --password PASS`    | 直接传入 `OPENCODE_SERVER_PASSWORD`，用于设置opencode serve的密码 | 从环境变量读取 |
 | `-b, --browser`          | 仅打开浏览器，不执行 `attach`       | `false`                  |
+| `-w, --workdir DIR`          | 设置远程opencode工作路径       | `/home/admin`                  |
 | `-h, --help`             | 显示帮助                            | -                        |
 
 ### 示例
