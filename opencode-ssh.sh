@@ -194,14 +194,14 @@ info "端口可用"
 step "在远程启动 opencode serve..."
 
 REMOTE_PID=""
-SESSION_ID="opencode-$$-$(date +%s%N)"
+SESSION_ID="opencode-$$-$(date +%s)-${RANDOM}${RANDOM}"
 
 API_KEY_B64=$(printf '%s' "$API_KEY" | base64 | tr -d '\n')
 PASS_B64=$(printf '%s' "$SERVER_PASSWORD" | base64 | tr -d '\n')
 
 # 构造远程脚本（纯字符串，无 heredoc）
 REMOTE_SCRIPT=$(cat <<'SCRIPT'
-set -euo pipefail
+set -eo pipefail
 
 API_KEY_B64='__AK__'
 PASS_B64='__PW__'
@@ -238,11 +238,12 @@ if [ -n "__WORKDIR__" ] && [ -d "__WORKDIR__" ]; then
 fi
 
 # 启动 opencode serve
+echo "[REMOTE] Starting opencode serve on port $PORT..."
 export OPENCODE_API_KEY="$API_KEY"
 export OPENCODE_SERVER_PASSWORD="$PASSWORD"
 
 # 用 exec 直接启动，避免中间 shell
-nohup bash -c 'exec opencode serve --port "'"$PORT"'" --hostname 0.0.0.0' > "$LOG_FILE" 2>&1 &
+nohup bash -c "exec opencode serve --port \"$PORT\" --hostname 0.0.0.0" > "$LOG_FILE" 2>&1 &
 PID=$!
 
 # 立即清理环境变量
@@ -250,6 +251,7 @@ unset API_KEY PASSWORD API_KEY_B64 PASS_B64
 
 # 等待服务启动
 for i in $(seq 1 30); do
+    echo "[REMOTE] Checking service... attempt $i"
     if curl -s --max-time 2 "http://localhost:${PORT}" >/dev/null 2>&1; then
         echo "$PID" > "$PID_FILE"
         echo "$SESSION_ID" > "$SESSION_FILE"
@@ -260,6 +262,9 @@ for i in $(seq 1 30); do
 done
 
 echo "FAIL:$PID"
+echo "[REMOTE] Service failed to start within 15 seconds"
+echo "[REMOTE] Checking log file: $LOG_FILE"
+cat "$LOG_FILE" 2>/dev/null || echo "[REMOTE] No log file"
 kill "$PID" 2>/dev/null || true
 sleep 0.5
 kill -9 "$PID" 2>/dev/null || true
@@ -276,13 +281,27 @@ REMOTE_SCRIPT=${REMOTE_SCRIPT//__PORT__/$REMOTE_PORT}
 REMOTE_SCRIPT=${REMOTE_SCRIPT//__WORKDIR__/$WORKDIR}
 
 # base64 编码后通过 SSH 参数传递（不经过 heredoc）
-SCRIPT_B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 | tr -d '\n')
+SCRIPT_B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 | tr -d '
+')
 
-LAUNCH_RESULT=$(ssh -o ConnectTimeout=$SSH_CONNECT_TIMEOUT "$SSH_HOST" \
-    "echo '$SCRIPT_B64' | base64 -d | bash")
+step "发送启动脚本到远程服务器..."
+info "脚本大小: ${#SCRIPT_B64} 字节"
+
+# 执行远程脚本，|| true 防止 ssh 失败导致本地脚本退出
+LAUNCH_OUTPUT=$(ssh -o ConnectTimeout=$SSH_CONNECT_TIMEOUT "$SSH_HOST" \
+    "echo '$SCRIPT_B64' | base64 -d > /tmp/opencode-launch-$$.sh && bash /tmp/opencode-launch-$$.sh; rm -f /tmp/opencode-launch-$$.sh" 2>&1) || true
+LAUNCH_RESULT=$(echo "$LAUNCH_OUTPUT" | tail -1)
+
+# 输出远程所有输出（用于调试）
+if [ -n "$LAUNCH_OUTPUT" ]; then
+    echo "[REMOTE OUTPUT]"
+    echo "$LAUNCH_OUTPUT"
+    echo "[END REMOTE OUTPUT]"
+else
+    warn "远程脚本没有返回任何输出"
+fi
 
 echo "[DEBUG] 远程返回: $LAUNCH_RESULT"
-
 # ═══════════════════════════════════════════════════════
 # STEP 5.5: 解析远程返回结果，提取 PID
 # ═══════════════════════════════════════════════════════
